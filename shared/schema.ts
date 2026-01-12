@@ -65,8 +65,8 @@ export interface MiroConnector {
 export interface MindmapNode {
   id: string;
   content: string;
-  level: number;
-  children: MindmapNode[];
+  parentId?: string;
+  isRoot?: boolean;
 }
 
 // Agenda output

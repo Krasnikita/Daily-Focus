@@ -1,44 +1,40 @@
 import fetch from "node-fetch";
-import type { MiroShapeItem, MiroConnector, MindmapNode, AppConfig } from "@shared/schema";
+import type { MindmapNode, AppConfig } from "@shared/schema";
 
-interface MiroApiResponse {
-  data: Array<{
+interface MindmapNodeResponse {
+  id: string;
+  type: string;
+  data?: {
+    isRoot?: boolean;
+    nodeView?: {
+      type: string;
+      data?: {
+        content?: string;
+      };
+    };
+  };
+  parent?: {
     id: string;
-    type: string;
-    data?: {
-      content?: string;
-      shape?: string;
-    };
-    position?: {
-      x: number;
-      y: number;
-    };
-    parent?: {
-      id: string;
-    };
-  }>;
-  cursor?: string;
+  };
 }
 
-interface MiroConnectorsResponse {
-  data: Array<{
-    id: string;
-    startItem?: { id: string };
-    endItem?: { id: string };
-  }>;
+interface MindmapNodesApiResponse {
+  data: MindmapNodeResponse[];
+  size: number;
+  total: number;
   cursor?: string;
 }
 
 export class MiroService {
   private config: AppConfig["miro"];
-  private baseUrl = "https://api.miro.com/v2";
+  private experimentalBaseUrl = "https://api.miro.com/v2-experimental";
 
   constructor(config: AppConfig["miro"]) {
     this.config = config;
   }
 
-  private async fetchWithAuth(endpoint: string): Promise<any> {
-    const response = await fetch(`${this.baseUrl}${endpoint}`, {
+  private async fetchWithAuth(url: string): Promise<any> {
+    const response = await fetch(url, {
       headers: {
         "Authorization": `Bearer ${this.config.accessToken}`,
         "Accept": "application/json",
@@ -53,59 +49,7 @@ export class MiroService {
     return response.json();
   }
 
-  async fetchAllItems(): Promise<MiroShapeItem[]> {
-    const items: MiroShapeItem[] = [];
-    let cursor: string | undefined;
-
-    do {
-      const endpoint = `/boards/${this.config.boardId}/items${cursor ? `?cursor=${cursor}` : ""}`;
-      const response: MiroApiResponse = await this.fetchWithAuth(endpoint);
-
-      for (const item of response.data) {
-        if (item.type === "shape" || item.type === "text" || item.type === "sticky_note") {
-          items.push({
-            id: item.id,
-            type: item.type,
-            content: this.cleanContent(item.data?.content || ""),
-            parentId: item.parent?.id,
-            position: {
-              x: item.position?.x || 0,
-              y: item.position?.y || 0,
-            },
-          });
-        }
-      }
-
-      cursor = response.cursor;
-    } while (cursor);
-
-    return items;
-  }
-
-  async fetchConnectors(): Promise<MiroConnector[]> {
-    const connectors: MiroConnector[] = [];
-    let cursor: string | undefined;
-
-    do {
-      const endpoint = `/boards/${this.config.boardId}/connectors${cursor ? `?cursor=${cursor}` : ""}`;
-      const response: MiroConnectorsResponse = await this.fetchWithAuth(endpoint);
-
-      for (const connector of response.data) {
-        connectors.push({
-          id: connector.id,
-          startItem: connector.startItem,
-          endItem: connector.endItem,
-        });
-      }
-
-      cursor = response.cursor;
-    } while (cursor);
-
-    return connectors;
-  }
-
   private cleanContent(html: string): string {
-    // Remove HTML tags and decode entities
     return html
       .replace(/<[^>]*>/g, "")
       .replace(/&nbsp;/g, " ")
@@ -114,73 +58,69 @@ export class MiroService {
       .replace(/&gt;/g, ">")
       .replace(/&quot;/g, '"')
       .replace(/&#39;/g, "'")
+      .replace(/&#43;/g, "+")
+      .replace(/&#61;/g, "=")
+      .replace(/&#34;/g, '"')
       .trim();
+  }
+
+  async fetchAllMindmapNodes(): Promise<MindmapNode[]> {
+    const nodes: MindmapNode[] = [];
+    let cursor: string | undefined;
+
+    do {
+      const url = `${this.experimentalBaseUrl}/boards/${this.config.boardId}/mindmap_nodes?limit=50${cursor ? `&cursor=${cursor}` : ""}`;
+      const response: MindmapNodesApiResponse = await this.fetchWithAuth(url);
+
+      for (const node of response.data) {
+        const content = node.data?.nodeView?.data?.content || "";
+        nodes.push({
+          id: node.id,
+          content: this.cleanContent(content),
+          parentId: node.parent?.id,
+          isRoot: node.data?.isRoot || false,
+        });
+      }
+
+      cursor = response.cursor;
+    } while (cursor);
+
+    console.log(`Fetched ${nodes.length} mindmap nodes from Miro`);
+    return nodes;
   }
 
   async getSecondLevelBlocks(): Promise<string[]> {
     try {
-      const items = await this.fetchAllItems();
-      const connectors = await this.fetchConnectors();
+      const nodes = await this.fetchAllMindmapNodes();
+      const targetId = this.config.targetWidgetId;
 
-      // Find the target widget "Ключевые векторы" - first by ID, then by content
-      let targetWidget = items.find(item => item.id === this.config.targetWidgetId);
-      
-      if (!targetWidget) {
-        console.log("Target widget not found by ID, searching by content...");
-        targetWidget = items.find(item => 
-          item.content.toLowerCase().includes("ключевые векторы")
+      const targetNode = nodes.find(n => n.id === targetId);
+      if (!targetNode) {
+        console.log(`Target node ${targetId} not found by ID, searching by content...`);
+        const byContent = nodes.find(n => 
+          n.content.toLowerCase().includes("ключевые векторы")
         );
-      }
-
-      if (!targetWidget) {
-        throw new Error("Widget 'Ключевые векторы' не найден на доске");
-      }
-
-      // Build connection graph
-      const childrenMap = new Map<string, string[]>();
-      
-      for (const connector of connectors) {
-        if (connector.startItem && connector.endItem) {
-          const startId = connector.startItem.id;
-          const endId = connector.endItem.id;
-          
-          // Add bidirectional for now, we'll determine direction later
-          if (!childrenMap.has(startId)) {
-            childrenMap.set(startId, []);
-          }
-          childrenMap.get(startId)!.push(endId);
+        if (!byContent) {
+          throw new Error("Widget 'Ключевые векторы' не найден на доске");
         }
       }
 
-      // Find 1st level children (directly connected to target)
-      const targetId = targetWidget.id;
-      const firstLevelIds = childrenMap.get(targetId) || [];
+      const firstLevelChildren = nodes.filter(n => n.parentId === targetId);
+      console.log(`Found ${firstLevelChildren.length} first-level children (focus areas)`);
 
-      // Find 2nd level children (connected to 1st level)
-      const secondLevelIds = new Set<string>();
-      for (const firstLevelId of firstLevelIds) {
-        const children = childrenMap.get(firstLevelId) || [];
-        for (const childId of children) {
-          if (childId !== targetId && !firstLevelIds.includes(childId)) {
-            secondLevelIds.add(childId);
-          }
-        }
-      }
-
-      // Get content of 2nd level items
+      const firstLevelIds = new Set(firstLevelChildren.map(n => n.id));
       const secondLevelBlocks: string[] = [];
-      for (const item of items) {
-        if (secondLevelIds.has(item.id) && item.content) {
-          secondLevelBlocks.push(item.content);
+
+      for (const firstLevelNode of firstLevelChildren) {
+        const secondLevelChildren = nodes.filter(n => n.parentId === firstLevelNode.id);
+        for (const child of secondLevelChildren) {
+          if (child.content) {
+            secondLevelBlocks.push(child.content);
+          }
         }
       }
 
-      // If no connectors found, try position-based hierarchy
-      if (secondLevelBlocks.length === 0 && targetWidget) {
-        console.log("No connectors found, trying position-based approach...");
-        return this.getChildrenByPosition(items, targetWidget);
-      }
-
+      console.log(`Found ${secondLevelBlocks.length} second-level blocks`);
       return secondLevelBlocks;
     } catch (error) {
       console.error("Miro error:", error);
@@ -188,40 +128,54 @@ export class MiroService {
     }
   }
 
-  private getChildrenByPosition(items: MiroShapeItem[], rootItem: MiroShapeItem): string[] {
-    // Sort items by distance from root and group by approximate levels
-    const itemsWithDistance = items
-      .filter(item => item.id !== rootItem.id && item.content)
-      .map(item => ({
-        ...item,
-        distance: Math.sqrt(
-          Math.pow(item.position.x - rootItem.position.x, 2) +
-          Math.pow(item.position.y - rootItem.position.y, 2)
-        ),
-      }))
-      .sort((a, b) => a.distance - b.distance);
+  async getFocusAreasWithBlocks(): Promise<Array<{area: string; blocks: string[]}>> {
+    try {
+      const nodes = await this.fetchAllMindmapNodes();
+      const targetId = this.config.targetWidgetId;
 
-    // Assume items at similar distances are same level
-    // Take items in the "second band" of distances
-    if (itemsWithDistance.length < 2) {
-      return itemsWithDistance.map(i => i.content);
+      const targetNode = nodes.find(n => n.id === targetId);
+      if (!targetNode) {
+        throw new Error("Widget 'Ключевые векторы' не найден на доске");
+      }
+
+      const firstLevelChildren = nodes.filter(n => n.parentId === targetId);
+      const result: Array<{area: string; blocks: string[]}> = [];
+
+      for (const areaNode of firstLevelChildren) {
+        const blocks = nodes
+          .filter(n => n.parentId === areaNode.id)
+          .map(n => n.content)
+          .filter(Boolean);
+        
+        result.push({
+          area: areaNode.content,
+          blocks,
+        });
+      }
+
+      return result;
+    } catch (error) {
+      console.error("Miro error:", error);
+      throw error;
     }
-
-    // Simple heuristic: first few items are level 1, next batch is level 2
-    const level1Count = Math.min(5, Math.floor(itemsWithDistance.length / 3));
-    const level2Items = itemsWithDistance.slice(level1Count, level1Count + 10);
-
-    return level2Items.map(item => item.content);
   }
 
   async formatMiroSection(): Promise<string> {
-    const blocks = await this.getSecondLevelBlocks();
+    const focusAreas = await this.getFocusAreasWithBlocks();
     
-    if (blocks.length === 0) {
-      return "Фокус на:\nБлоки 2-го уровня не найдены";
+    if (focusAreas.length === 0) {
+      return "Фокус на:\nБлоки не найдены";
     }
 
-    const lines = blocks.map((block, index) => `${index + 1}. ${block}`);
-    return `Фокус на:\n${lines.join("\n")}`;
+    const lines: string[] = ["Фокус на:"];
+    
+    for (const area of focusAreas) {
+      lines.push(`\n• ${area.area}`);
+      for (const block of area.blocks) {
+        lines.push(`  - ${block}`);
+      }
+    }
+
+    return lines.join("\n");
   }
 }
