@@ -1,7 +1,6 @@
 {
   "caldav": {
-    "serverUrl": "https://caldav.yandex.ru",
-    "calendarPath": "/calendars/your_yandex_email@yandex.ru/events-default/"
+    "serverUrl": "https://caldav.yandex.ru"
   },
   "miro": {
     "boardId": "uXjVPcUvuEM=",

@@ -48,12 +48,18 @@ export function loadConfig(): AppConfig {
   const fileConfig = loadFileConfig();
 
   // Combine file config with environment secrets
+  const caldavUsername = getRequiredEnv("CALDAV_USERNAME");
+  
+  // Auto-construct calendar path from username if not specified
+  const calendarPath = fileConfig.caldav.calendarPath || 
+    `/calendars/${caldavUsername}/events-default/`;
+
   cachedConfig = {
     caldav: {
       serverUrl: fileConfig.caldav.serverUrl,
-      username: getRequiredEnv("CALDAV_USERNAME"),
+      username: caldavUsername,
       password: getRequiredEnv("CALDAV_PASSWORD"),
-      calendarPath: fileConfig.caldav.calendarPath,
+      calendarPath: calendarPath,
     },
     miro: {
       accessToken: getRequiredEnv("MIRO_ACCESS_TOKEN"),
