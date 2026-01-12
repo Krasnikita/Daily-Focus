@@ -92,17 +92,19 @@ export class MiroService {
   async getSecondLevelBlocks(): Promise<string[]> {
     try {
       const nodes = await this.fetchAllMindmapNodes();
-      const targetId = this.config.targetWidgetId;
+      let targetId = this.config.targetWidgetId;
 
-      const targetNode = nodes.find(n => n.id === targetId);
+      let targetNode = nodes.find(n => n.id === targetId);
       if (!targetNode) {
         console.log(`Target node ${targetId} not found by ID, searching by content...`);
-        const byContent = nodes.find(n => 
+        targetNode = nodes.find(n => 
           n.content.toLowerCase().includes("ключевые векторы")
         );
-        if (!byContent) {
+        if (!targetNode) {
           throw new Error("Widget 'Ключевые векторы' не найден на доске");
         }
+        targetId = targetNode.id;
+        console.log(`Found target node by content with ID: ${targetId}`);
       }
 
       const firstLevelChildren = nodes.filter(n => n.parentId === targetId);
@@ -131,11 +133,19 @@ export class MiroService {
   async getFocusAreasWithBlocks(): Promise<Array<{area: string; blocks: string[]}>> {
     try {
       const nodes = await this.fetchAllMindmapNodes();
-      const targetId = this.config.targetWidgetId;
+      let targetId = this.config.targetWidgetId;
 
-      const targetNode = nodes.find(n => n.id === targetId);
+      let targetNode = nodes.find(n => n.id === targetId);
       if (!targetNode) {
-        throw new Error("Widget 'Ключевые векторы' не найден на доске");
+        console.log(`Target node ${targetId} not found by ID, searching by content...`);
+        targetNode = nodes.find(n => 
+          n.content.toLowerCase().includes("ключевые векторы")
+        );
+        if (!targetNode) {
+          throw new Error("Widget 'Ключевые векторы' не найден на доске");
+        }
+        targetId = targetNode.id;
+        console.log(`Found target node by content with ID: ${targetId}`);
       }
 
       const firstLevelChildren = nodes.filter(n => n.parentId === targetId);
