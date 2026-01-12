@@ -1,25 +1,37 @@
 import { z } from "zod";
 
-// Configuration schema
-export const configSchema = z.object({
+// File-based config schema (non-sensitive settings only)
+export const fileConfigSchema = z.object({
   caldav: z.object({
     serverUrl: z.string().url(),
-    username: z.string(),
-    password: z.string(),
     calendarPath: z.string().optional(),
   }),
   miro: z.object({
-    accessToken: z.string(),
     boardId: z.string(),
-    targetWidgetId: z.string(), // ID of "Ключевые векторы" widget
-  }),
-  telegram: z.object({
-    botToken: z.string(),
-    chatId: z.string(),
+    targetWidgetId: z.string(),
   }),
 });
 
-export type AppConfig = z.infer<typeof configSchema>;
+export type FileConfig = z.infer<typeof fileConfigSchema>;
+
+// Full config type (file config + secrets from environment)
+export interface AppConfig {
+  caldav: {
+    serverUrl: string;
+    username: string;
+    password: string;
+    calendarPath?: string;
+  };
+  miro: {
+    accessToken: string;
+    boardId: string;
+    targetWidgetId: string;
+  };
+  telegram: {
+    botToken: string;
+    chatId: string;
+  };
+}
 
 // Calendar event
 export interface CalendarEvent {

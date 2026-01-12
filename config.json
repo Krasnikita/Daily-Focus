@@ -1,0 +1,10 @@
+{
+  "caldav": {
+    "serverUrl": "https://caldav.yandex.ru",
+    "calendarPath": "/calendars/your_yandex_email@yandex.ru/events-default/"
+  },
+  "miro": {
+    "boardId": "uXjVPcUvuEM=",
+    "targetWidgetId": "3458764638938962040"
+  }
+}

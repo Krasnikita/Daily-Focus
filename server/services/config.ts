@@ -1,18 +1,22 @@
 import { readFileSync, existsSync } from "fs";
-import { configSchema, type AppConfig } from "@shared/schema";
+import { fileConfigSchema, type AppConfig, type FileConfig } from "@shared/schema";
 
 let cachedConfig: AppConfig | null = null;
 
-export function loadConfig(): AppConfig {
-  if (cachedConfig) {
-    return cachedConfig;
+function getRequiredEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`Missing required environment secret: ${name}`);
   }
+  return value;
+}
 
+function loadFileConfig(): FileConfig {
   const configPath = "./config.json";
   
   if (!existsSync(configPath)) {
     throw new Error(
-      "config.json not found. Please create it with your CalDAV, Miro, and Telegram credentials."
+      "config.json not found. Please create it with CalDAV server URL, Miro board ID, and widget ID."
     );
   }
 
@@ -20,21 +24,49 @@ export function loadConfig(): AppConfig {
     const configData = readFileSync(configPath, "utf-8");
     const rawConfig = JSON.parse(configData);
     
-    const result = configSchema.safeParse(rawConfig);
+    const result = fileConfigSchema.safeParse(rawConfig);
     
     if (!result.success) {
       const errors = result.error.errors.map(e => `${e.path.join(".")}: ${e.message}`);
       throw new Error(`Invalid config.json:\n${errors.join("\n")}`);
     }
 
-    cachedConfig = result.data;
-    return cachedConfig;
+    return result.data;
   } catch (error) {
     if (error instanceof SyntaxError) {
       throw new Error("config.json contains invalid JSON");
     }
     throw error;
   }
+}
+
+export function loadConfig(): AppConfig {
+  if (cachedConfig) {
+    return cachedConfig;
+  }
+
+  const fileConfig = loadFileConfig();
+
+  // Combine file config with environment secrets
+  cachedConfig = {
+    caldav: {
+      serverUrl: fileConfig.caldav.serverUrl,
+      username: getRequiredEnv("CALDAV_USERNAME"),
+      password: getRequiredEnv("CALDAV_PASSWORD"),
+      calendarPath: fileConfig.caldav.calendarPath,
+    },
+    miro: {
+      accessToken: getRequiredEnv("MIRO_ACCESS_TOKEN"),
+      boardId: fileConfig.miro.boardId,
+      targetWidgetId: fileConfig.miro.targetWidgetId,
+    },
+    telegram: {
+      botToken: getRequiredEnv("TELEGRAM_BOT_TOKEN"),
+      chatId: getRequiredEnv("TELEGRAM_CHAT_ID"),
+    },
+  };
+
+  return cachedConfig;
 }
 
 export function reloadConfig(): AppConfig {
