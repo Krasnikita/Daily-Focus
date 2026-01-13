@@ -20,7 +20,7 @@ export interface DayAnalysis {
 const WORK_START_HOUR = 10;
 const WORK_END_HOUR = 18;
 const WORK_HOURS = WORK_END_HOUR - WORK_START_HOUR; // 8 hours
-const BREAK_HOURS = 1.5;
+const BREAK_HOURS = 0.5;
 
 export class AgendaService {
   
@@ -36,8 +36,19 @@ export class AgendaService {
       const eventStart = new Date(event.start);
       const eventEnd = new Date(event.end);
 
+      // Ignore full day meetings (typically 24 hours or starting at 00:00 and ending at 00:00 next day)
+      const durationMs = eventEnd.getTime() - eventStart.getTime();
+      const isFullDay = durationMs >= 24 * 60 * 60 * 1000 || 
+                         (eventStart.getHours() === 0 && eventStart.getMinutes() === 0 && 
+                          eventEnd.getHours() === 0 && eventEnd.getMinutes() === 0);
+      
+      if (isFullDay) {
+        console.log(`Ignoring full day meeting: ${event.summary}`);
+        continue;
+      }
+
       if (eventStart >= todayStart && eventStart <= todayEnd) {
-        const durationMinutes = Math.round((eventEnd.getTime() - eventStart.getTime()) / (1000 * 60));
+        const durationMinutes = Math.round(durationMs / (1000 * 60));
         todayMeetings.push({
           summary: event.summary,
           start: eventStart,
@@ -56,17 +67,30 @@ export class AgendaService {
     const workEnd = new Date(today);
     workEnd.setHours(WORK_END_HOUR, 0, 0, 0);
 
-    let meetingMinutes = 0;
+    // Merge overlapping meetings to calculate total occupied time
+    const mergedMeetings: { start: number; end: number }[] = [];
+    const relevantMeetings = todayMeetings
+      .map(m => ({
+        start: Math.max(m.start.getTime(), workStart.getTime()),
+        end: Math.min(m.end.getTime(), workEnd.getTime())
+      }))
+      .filter(m => m.start < m.end)
+      .sort((a, b) => a.start - b.start);
 
-    for (const meeting of todayMeetings) {
-      const meetingStart = new Date(Math.max(meeting.start.getTime(), workStart.getTime()));
-      const meetingEnd = new Date(Math.min(meeting.end.getTime(), workEnd.getTime()));
-
-      if (meetingStart < meetingEnd) {
-        meetingMinutes += (meetingEnd.getTime() - meetingStart.getTime()) / (1000 * 60);
+    for (const meeting of relevantMeetings) {
+      if (mergedMeetings.length === 0) {
+        mergedMeetings.push(meeting);
+      } else {
+        const last = mergedMeetings[mergedMeetings.length - 1];
+        if (meeting.start < last.end) {
+          last.end = Math.max(last.end, meeting.end);
+        } else {
+          mergedMeetings.push(meeting);
+        }
       }
     }
 
+    const meetingMinutes = mergedMeetings.reduce((sum, m) => sum + (m.end - m.start) / (1000 * 60), 0);
     const meetingHours = meetingMinutes / 60;
     const freeHours = WORK_HOURS - BREAK_HOURS - meetingHours;
 
