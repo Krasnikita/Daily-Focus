@@ -61,8 +61,13 @@ export class AgendaService {
     return todayMeetings.sort((a, b) => a.start.getTime() - b.start.getTime());
   }
 
-  calculateFreeHours(todayMeetings: TodayMeeting[], today: Date): number {
+  getCurrentTime(): Date {
     const now = new Date();
+    return new Date(now.getTime() + 3 * 60 * 60 * 1000);
+  }
+
+  calculateFreeHours(todayMeetings: TodayMeeting[], today: Date): number {
+    const now = this.getCurrentTime();
     
     // Work start is max(current time, 10:00) if today, otherwise 10:00
     const workStart = new Date(today);
@@ -119,7 +124,7 @@ export class AgendaService {
   }
 
   hasLongFocusSlot(todayMeetings: TodayMeeting[], today: Date, minSlotHours: number = 2): boolean {
-    const now = new Date();
+    const now = this.getCurrentTime();
     
     const workStart = new Date(today);
     workStart.setHours(WORK_START_HOUR, 0, 0, 0);
