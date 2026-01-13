@@ -148,27 +148,23 @@ export class AgendaService {
   }
 
   findImportantMeetings(events: CalendarEvent[], today: Date): { hasInternalStatus: boolean; hasProductReview: boolean } {
-    const todayStart = new Date(today);
-    todayStart.setHours(0, 0, 0, 0);
-    const endOfWeek = this.getEndOfWorkWeek(today);
-    
     let hasInternalStatus = false;
     let hasProductReview = false;
 
+    // Events are already filtered by CalDAV time range query, so we just check names
+    // This handles recurring events where DTSTART is the original date, not the instance date
     for (const event of events) {
-      const eventDate = new Date(event.start);
+      const summaryLower = event.summary.toLowerCase();
       
-      if (eventDate >= todayStart && eventDate <= endOfWeek) {
-        const summaryLower = event.summary.toLowerCase();
-        
-        if (summaryLower.includes("внутренний продуктовый статус")) {
-          hasInternalStatus = true;
-        }
-        if (summaryLower.includes("product review weekly")) {
-          hasProductReview = true;
-        }
+      if (summaryLower.includes("внутренний продуктовый статус")) {
+        hasInternalStatus = true;
+      }
+      if (summaryLower.includes("product review weekly")) {
+        hasProductReview = true;
       }
     }
+    
+    console.log(`Important meetings found: internal=${hasInternalStatus}, productReview=${hasProductReview}`);
     return { hasInternalStatus, hasProductReview };
   }
 
