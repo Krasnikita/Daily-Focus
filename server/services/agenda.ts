@@ -62,16 +62,37 @@ export class AgendaService {
   }
 
   calculateFreeHours(todayMeetings: TodayMeeting[], today: Date): number {
+    const now = new Date();
+    
+    // Work start is max(current time, 10:00) if today, otherwise 10:00
     const workStart = new Date(today);
     workStart.setHours(WORK_START_HOUR, 0, 0, 0);
+    
+    // If current time is after 10:00 and we're calculating for today, use current time
+    const isToday = now.toDateString() === today.toDateString();
+    const effectiveStart = new Date(today);
+    if (isToday && now > workStart) {
+      effectiveStart.setTime(now.getTime());
+    } else {
+      effectiveStart.setHours(WORK_START_HOUR, 0, 0, 0);
+    }
+    
     const workEnd = new Date(today);
     workEnd.setHours(WORK_END_HOUR, 0, 0, 0);
+    
+    // If we're already past work end, no free time
+    if (effectiveStart >= workEnd) {
+      return 0;
+    }
+    
+    // Calculate available work hours from effective start to end
+    const availableHours = (workEnd.getTime() - effectiveStart.getTime()) / (1000 * 60 * 60);
 
     // Merge overlapping meetings to calculate total occupied time
     const mergedMeetings: { start: number; end: number }[] = [];
     const relevantMeetings = todayMeetings
       .map(m => ({
-        start: Math.max(m.start.getTime(), workStart.getTime()),
+        start: Math.max(m.start.getTime(), effectiveStart.getTime()),
         end: Math.min(m.end.getTime(), workEnd.getTime())
       }))
       .filter(m => m.start < m.end)
@@ -92,29 +113,45 @@ export class AgendaService {
 
     const meetingMinutes = mergedMeetings.reduce((sum, m) => sum + (m.end - m.start) / (1000 * 60), 0);
     const meetingHours = meetingMinutes / 60;
-    const freeHours = WORK_HOURS - BREAK_HOURS - meetingHours;
+    const freeHours = availableHours - BREAK_HOURS - meetingHours;
 
     return Math.max(0, Math.round(freeHours * 10) / 10);
   }
 
   hasLongFocusSlot(todayMeetings: TodayMeeting[], today: Date, minSlotHours: number = 2): boolean {
+    const now = new Date();
+    
     const workStart = new Date(today);
     workStart.setHours(WORK_START_HOUR, 0, 0, 0);
+    
+    // Use current time if after 10:00 and calculating for today
+    const isToday = now.toDateString() === today.toDateString();
+    const effectiveStart = new Date(today);
+    if (isToday && now > workStart) {
+      effectiveStart.setTime(now.getTime());
+    } else {
+      effectiveStart.setHours(WORK_START_HOUR, 0, 0, 0);
+    }
+    
     const workEnd = new Date(today);
     workEnd.setHours(WORK_END_HOUR, 0, 0, 0);
+    
+    if (effectiveStart >= workEnd) {
+      return false;
+    }
 
     const meetings = todayMeetings
-      .filter(m => m.start < workEnd && m.end > workStart)
+      .filter(m => m.start < workEnd && m.end > effectiveStart)
       .sort((a, b) => a.start.getTime() - b.start.getTime());
 
     if (meetings.length === 0) {
       return true;
     }
 
-    let currentTime = workStart;
+    let currentTime = effectiveStart;
 
     for (const meeting of meetings) {
-      const meetingStart = new Date(Math.max(meeting.start.getTime(), workStart.getTime()));
+      const meetingStart = new Date(Math.max(meeting.start.getTime(), effectiveStart.getTime()));
       
       if (meetingStart > currentTime) {
         const gapMinutes = (meetingStart.getTime() - currentTime.getTime()) / (1000 * 60);
