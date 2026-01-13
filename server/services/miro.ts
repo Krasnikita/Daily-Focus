@@ -170,6 +170,33 @@ export class MiroService {
     }
   }
 
+  async getFirstLevelAreas(): Promise<string[]> {
+    try {
+      const nodes = await this.fetchAllMindmapNodes();
+      let targetId = this.config.targetWidgetId;
+
+      let targetNode = nodes.find(n => n.id === targetId);
+      if (!targetNode) {
+        console.log(`Target node ${targetId} not found by ID, searching by content...`);
+        targetNode = nodes.find(n => 
+          n.content.toLowerCase().includes("ключевые векторы")
+        );
+        if (!targetNode) {
+          throw new Error("Widget 'Ключевые векторы' не найден на доске");
+        }
+        targetId = targetNode.id;
+      }
+
+      const firstLevelChildren = nodes.filter(n => n.parentId === targetId);
+      return firstLevelChildren
+        .map(n => n.content)
+        .filter(Boolean);
+    } catch (error) {
+      console.error("Miro error:", error);
+      throw error;
+    }
+  }
+
   async formatMiroSection(): Promise<string> {
     const focusAreas = await this.getFocusAreasWithBlocks();
     

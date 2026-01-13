@@ -121,27 +121,14 @@ export class CalDAVService {
     return new Date(dateStr);
   }
 
-  async findProductReviewMeeting(): Promise<string> {
+  async fetchWeekEvents(): Promise<CalendarEvent[]> {
     const now = new Date();
     const startOfWeek = this.getStartOfWeek(now);
     const endOfWeek = new Date(startOfWeek);
     endOfWeek.setDate(endOfWeek.getDate() + 7);
 
     try {
-      const events = await this.fetchEvents(startOfWeek, endOfWeek);
-      
-      // Find "Product Review Weekly" meeting
-      const productReview = events.find(event => 
-        event.summary.toLowerCase().includes("product review weekly")
-      );
-
-      if (productReview) {
-        const dayOfWeek = productReview.start.getDay();
-        const dayName = RUSSIAN_DAYS[dayOfWeek];
-        return `На этой неделе:\n${dayName} - статус по продукту`;
-      }
-
-      return "На этой неделе:\nProduct Review Weekly не найден";
+      return await this.fetchEvents(startOfWeek, endOfWeek);
     } catch (error) {
       console.error("CalDAV error:", error);
       throw new Error(`Ошибка при получении календаря: ${error instanceof Error ? error.message : "Unknown error"}`);
