@@ -9,6 +9,7 @@ export const fileConfigSchema = z.object({
   miro: z.object({
     boardId: z.string(),
     targetWidgetId: z.string(),
+    bossPreparationWidgetId: z.string().optional(),
   }),
 });
 
@@ -26,6 +27,7 @@ export interface AppConfig {
     accessToken: string;
     boardId: string;
     targetWidgetId: string;
+    bossPreparationWidgetId?: string;
   };
   telegram: {
     botToken: string;

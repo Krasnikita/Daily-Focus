@@ -32,16 +32,19 @@ export async function registerRoutes(
       }
 
       let focusAreas: string[] = [];
+      let bossPreparationData: { conceptualThoughts: string[]; meetingSelection: string[] } | undefined;
       try {
         const miroService = new MiroService(config.miro);
         focusAreas = await miroService.getFirstLevelAreas();
         console.log(`Fetched ${focusAreas.length} focus areas from Miro`);
+        
+        bossPreparationData = await miroService.getBossPreparationItems();
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unknown Miro error";
         errors.push(`Miro: ${message}`);
       }
 
-      const analysis = agendaService.analyzeDay(weekEvents, today);
+      const analysis = agendaService.analyzeDay(weekEvents, today, bossPreparationData);
       console.log(`Day analysis: ${analysis.freeHours} free hours, category: ${analysis.dayCategory}`);
       
       fullMessage = agendaService.formatAgendaMessage(analysis, focusAreas);

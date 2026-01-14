@@ -7,6 +7,11 @@ export interface TodayMeeting {
   durationMinutes: number;
 }
 
+export interface BossPreparationData {
+  conceptualThoughts: string[];
+  meetingSelection: string[];
+}
+
 export interface DayAnalysis {
   freeHours: number;
   dayCategory: string;
@@ -15,6 +20,8 @@ export interface DayAnalysis {
   recommendedTasks: string[];
   hasInternalStatusUpcoming: boolean;
   hasProductReviewUpcoming: boolean;
+  weekContent: "подготовка питчей" | "цифры и развитие";
+  bossPreparationData?: BossPreparationData;
 }
 
 const WORK_START_HOUR = 10;
@@ -23,6 +30,13 @@ const WORK_HOURS = WORK_END_HOUR - WORK_START_HOUR; // 8 hours
 const BREAK_HOURS = 0.5;
 
 export class AgendaService {
+  
+  getWeekContent(date: Date): "подготовка питчей" | "цифры и развитие" {
+    const startOfYear = new Date(date.getFullYear(), 0, 1);
+    const dayOfYear = Math.floor((date.getTime() - startOfYear.getTime()) / (1000 * 60 * 60 * 24));
+    const weekNumber = Math.ceil((dayOfYear + 1) / 7);
+    return weekNumber % 2 === 1 ? "подготовка питчей" : "цифры и развитие";
+  }
   
   analyzeTodayMeetings(events: CalendarEvent[], today: Date): TodayMeeting[] {
     const todayStart = new Date(today);
@@ -245,7 +259,7 @@ export class AgendaService {
     return d;
   }
 
-  analyzeDay(events: CalendarEvent[], today: Date): DayAnalysis {
+  analyzeDay(events: CalendarEvent[], today: Date, bossPreparationData?: BossPreparationData): DayAnalysis {
     const todayMeetings = this.analyzeTodayMeetings(events, today);
     const freeHours = this.calculateFreeHours(todayMeetings, today);
     const hasLongSlot = this.hasLongFocusSlot(todayMeetings, today);
@@ -256,6 +270,7 @@ export class AgendaService {
     const { hasInternalStatus, hasProductReview } = this.findImportantMeetings(events, todayStart);
     
     const recommendedTasks = this.generateRecommendedTasks(dayCategory, hasInternalStatus, hasProductReview);
+    const weekContent = this.getWeekContent(today);
 
     return {
       freeHours,
@@ -265,6 +280,8 @@ export class AgendaService {
       recommendedTasks,
       hasInternalStatusUpcoming: hasInternalStatus,
       hasProductReviewUpcoming: hasProductReview,
+      weekContent,
+      bossPreparationData,
     };
   }
 
@@ -278,12 +295,35 @@ export class AgendaService {
       `Тип дня: ${analysis.dayCategory}`,
     ];
 
-    if (analysis.recommendedTasks.length > 0) {
+    if (analysis.hasInternalStatusUpcoming || analysis.hasProductReviewUpcoming) {
       lines.push("");
       lines.push("Предлагаемые задачи:");
       lines.push("");
-      for (const task of analysis.recommendedTasks) {
-        lines.push(`- ${task}`);
+      
+      if (analysis.hasInternalStatusUpcoming) {
+        lines.push("- Подготовка к статусу с шефом");
+        lines.push(`— Содержание: ${analysis.weekContent}`);
+        
+        if (analysis.bossPreparationData) {
+          if (analysis.bossPreparationData.conceptualThoughts.length > 0) {
+            lines.push("— Концептуальные мысли:");
+            for (const thought of analysis.bossPreparationData.conceptualThoughts) {
+              lines.push(`—— ${thought}`);
+            }
+          }
+          
+          if (analysis.bossPreparationData.meetingSelection.length > 0) {
+            lines.push("— Отбор на ближайшую встречу:");
+            for (const item of analysis.bossPreparationData.meetingSelection) {
+              lines.push(`—— ${item}`);
+            }
+          }
+        }
+        lines.push("");
+      }
+      
+      if (analysis.hasProductReviewUpcoming) {
+        lines.push("- Подготовка к статусу по продукту");
       }
     }
 

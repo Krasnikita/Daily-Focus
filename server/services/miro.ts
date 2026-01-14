@@ -215,4 +215,44 @@ export class MiroService {
 
     return lines.join("\n");
   }
+
+  async getBossPreparationItems(): Promise<{ conceptualThoughts: string[]; meetingSelection: string[] }> {
+    try {
+      const nodes = await this.fetchAllMindmapNodes();
+      
+      const conceptualNode = nodes.find(n => 
+        n.content.toLowerCase().includes("концептуальные мысли")
+      );
+      const meetingNode = nodes.find(n => 
+        n.content.toLowerCase().includes("отбор на ближайшую встречу")
+      );
+
+      const conceptualThoughts: string[] = [];
+      const meetingSelection: string[] = [];
+
+      if (conceptualNode) {
+        const children = nodes.filter(n => n.parentId === conceptualNode.id);
+        for (const child of children) {
+          if (child.content) {
+            conceptualThoughts.push(child.content);
+          }
+        }
+      }
+
+      if (meetingNode) {
+        const children = nodes.filter(n => n.parentId === meetingNode.id);
+        for (const child of children) {
+          if (child.content) {
+            meetingSelection.push(child.content);
+          }
+        }
+      }
+
+      console.log(`Boss prep items: ${conceptualThoughts.length} conceptual, ${meetingSelection.length} meeting selection`);
+      return { conceptualThoughts, meetingSelection };
+    } catch (error) {
+      console.error("Error fetching boss preparation items:", error);
+      return { conceptualThoughts: [], meetingSelection: [] };
+    }
+  }
 }
