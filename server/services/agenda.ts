@@ -300,9 +300,13 @@ export class AgendaService {
       lines.push("Предлагаемые задачи:");
       lines.push("");
       
+      let taskCounter = 1;
+
       if (analysis.hasInternalStatusUpcoming) {
-        lines.push("- Подготовка к статусу с шефом");
+        lines.push(`${taskCounter++}. Подготовка к статусу с шефом`);
+        lines.push("");
         lines.push(`— Содержание: ${analysis.weekContent}`);
+        lines.push("");
         
         if (analysis.bossPreparationData) {
           if (analysis.bossPreparationData.conceptualThoughts.length > 0) {
@@ -310,6 +314,7 @@ export class AgendaService {
             for (const thought of analysis.bossPreparationData.conceptualThoughts) {
               lines.push(`—— ${thought}`);
             }
+            lines.push("");
           }
           
           if (analysis.bossPreparationData.meetingSelection.length > 0) {
@@ -317,13 +322,13 @@ export class AgendaService {
             for (const item of analysis.bossPreparationData.meetingSelection) {
               lines.push(`—— ${item}`);
             }
+            lines.push("");
           }
         }
-        lines.push("");
       }
       
       if (analysis.hasProductReviewUpcoming) {
-        lines.push("- Подготовка к статусу по продукту");
+        lines.push(`${taskCounter++}. Подготовка к статусу по продукту`);
       }
     }
 
