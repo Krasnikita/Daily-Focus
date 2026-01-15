@@ -22,10 +22,12 @@ export async function registerRoutes(
       const today = new Date();
 
       let weekEvents: any[] = [];
+      let upcomingEvents: any[] = [];
       try {
         const caldavService = new CalDAVService(config.caldav);
         weekEvents = await caldavService.fetchWeekEvents();
-        console.log(`Fetched ${weekEvents.length} events from calendar`);
+        upcomingEvents = await caldavService.fetchEventsFromTodayOnwards();
+        console.log(`Fetched ${weekEvents.length} events from calendar, ${upcomingEvents.length} from today onwards`);
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unknown calendar error";
         errors.push(`Calendar: ${message}`);
@@ -44,7 +46,7 @@ export async function registerRoutes(
         errors.push(`Miro: ${message}`);
       }
 
-      const analysis = agendaService.analyzeDay(weekEvents, today, bossPreparationData);
+      const analysis = agendaService.analyzeDay(weekEvents, today, bossPreparationData, upcomingEvents);
       console.log(`Day analysis: ${analysis.freeHours} free hours, category: ${analysis.dayCategory}`);
       
       fullMessage = agendaService.formatAgendaMessage(analysis, focusAreas);

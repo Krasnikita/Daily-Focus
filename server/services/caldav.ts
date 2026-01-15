@@ -135,6 +135,37 @@ export class CalDAVService {
     }
   }
 
+  async fetchEventsFromTodayOnwards(): Promise<CalendarEvent[]> {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    const endOfWeek = this.getEndOfWorkWeek(now);
+
+    try {
+      return await this.fetchEvents(now, endOfWeek);
+    } catch (error) {
+      console.error("CalDAV error:", error);
+      throw new Error(`Ошибка при получении календаря: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  }
+
+  private getEndOfWorkWeek(date: Date): Date {
+    const d = new Date(date);
+    const dayOfWeek = d.getDay();
+    let daysUntilFriday: number;
+    
+    if (dayOfWeek === 0) {
+      daysUntilFriday = 5;
+    } else if (dayOfWeek === 6) {
+      daysUntilFriday = 6;
+    } else {
+      daysUntilFriday = 5 - dayOfWeek;
+    }
+    
+    d.setDate(d.getDate() + daysUntilFriday);
+    d.setHours(23, 59, 59, 999);
+    return d;
+  }
+
   private getStartOfWeek(date: Date): Date {
     const d = new Date(date);
     const day = d.getDay();

@@ -203,12 +203,12 @@ export class AgendaService {
     }
   }
 
-  findImportantMeetings(events: CalendarEvent[], today: Date): { hasInternalStatus: boolean; hasProductReview: boolean } {
+  findImportantMeetings(events: CalendarEvent[]): { hasInternalStatus: boolean; hasProductReview: boolean } {
     let hasInternalStatus = false;
     let hasProductReview = false;
 
-    // Events are already filtered by CalDAV time range query, so we just check names
-    // This handles recurring events where DTSTART is the original date, not the instance date
+    // Events should be filtered by CalDAV to only include today onwards
+    // This ensures past meetings don't trigger preparation tasks
     for (const event of events) {
       const summaryLower = event.summary.toLowerCase();
       
@@ -220,7 +220,7 @@ export class AgendaService {
       }
     }
     
-    console.log(`Important meetings found: internal=${hasInternalStatus}, productReview=${hasProductReview}`);
+    console.log(`Important meetings found (from today onwards): internal=${hasInternalStatus}, productReview=${hasProductReview}`);
     return { hasInternalStatus, hasProductReview };
   }
 
@@ -259,15 +259,16 @@ export class AgendaService {
     return d;
   }
 
-  analyzeDay(events: CalendarEvent[], today: Date, bossPreparationData?: BossPreparationData): DayAnalysis {
+  analyzeDay(events: CalendarEvent[], today: Date, bossPreparationData?: BossPreparationData, upcomingEvents?: CalendarEvent[]): DayAnalysis {
     const todayMeetings = this.analyzeTodayMeetings(events, today);
     const freeHours = this.calculateFreeHours(todayMeetings, today);
     const hasLongSlot = this.hasLongFocusSlot(todayMeetings, today);
     const dayCategory = this.determineDayCategory(freeHours, hasLongSlot);
     
-    const todayStart = new Date(today);
-    todayStart.setHours(0, 0, 0, 0);
-    const { hasInternalStatus, hasProductReview } = this.findImportantMeetings(events, todayStart);
+    // Use upcomingEvents (from today onwards) to check for important meetings
+    // This ensures past meetings within the week don't trigger preparation tasks
+    const eventsToCheck = upcomingEvents || events;
+    const { hasInternalStatus, hasProductReview } = this.findImportantMeetings(eventsToCheck);
     
     const recommendedTasks = this.generateRecommendedTasks(dayCategory, hasInternalStatus, hasProductReview);
     const weekContent = this.getWeekContent(today);
