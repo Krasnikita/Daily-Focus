@@ -24,9 +24,11 @@ export interface DayAnalysis {
   bossPreparationData?: BossPreparationData;
 }
 
-const WORK_START_HOUR = 10;
-const WORK_END_HOUR = 18;
-const WORK_HOURS = WORK_END_HOUR - WORK_START_HOUR; // 8 hours
+// Moscow time work hours: 10:00 - 18:00 MSK = 07:00 - 15:00 UTC
+const WORK_START_HOUR_UTC = 7;
+const WORK_END_HOUR_UTC = 15;
+const MOSCOW_OFFSET_HOURS = 3;
+const WORK_HOURS = 8; // 10:00-18:00 = 8 hours
 const BREAK_HOURS = 0.5;
 
 export class AgendaService {
@@ -39,65 +41,83 @@ export class AgendaService {
   }
   
   analyzeTodayMeetings(events: CalendarEvent[], today: Date): TodayMeeting[] {
-    const todayStart = new Date(today);
-    todayStart.setHours(0, 0, 0, 0);
-    const todayEnd = new Date(today);
-    todayEnd.setHours(23, 59, 59, 999);
+    // CalDAV already filtered events by today's date range
+    // But recurring events return original DTSTART - need to map time to today
+    console.log(`Analyzing ${events.length} events from CalDAV for today`);
 
     const todayMeetings: TodayMeeting[] = [];
+    
+    // Get today's date in UTC
+    const todayDate = new Date(today);
+    todayDate.setUTCHours(0, 0, 0, 0);
 
     for (const event of events) {
-      const eventStart = new Date(event.start);
-      const eventEnd = new Date(event.end);
+      const originalStart = new Date(event.start);
+      const originalEnd = new Date(event.end);
 
-      // Ignore full day meetings (typically 24 hours or starting at 00:00 and ending at 00:00 next day)
-      const durationMs = eventEnd.getTime() - eventStart.getTime();
+      // Ignore full day meetings
+      const durationMs = originalEnd.getTime() - originalStart.getTime();
       const isFullDay = durationMs >= 24 * 60 * 60 * 1000 || 
-                         (eventStart.getHours() === 0 && eventStart.getMinutes() === 0 && 
-                          eventEnd.getHours() === 0 && eventEnd.getMinutes() === 0);
+                         (originalStart.getUTCHours() === 0 && originalStart.getUTCMinutes() === 0 && 
+                          originalEnd.getUTCHours() === 0 && originalEnd.getUTCMinutes() === 0);
       
       if (isFullDay) {
         console.log(`Ignoring full day meeting: ${event.summary}`);
         continue;
       }
 
-      if (eventStart >= todayStart && eventStart <= todayEnd) {
-        const durationMinutes = Math.round(durationMs / (1000 * 60));
-        todayMeetings.push({
-          summary: event.summary,
-          start: eventStart,
-          end: eventEnd,
-          durationMinutes,
-        });
+      // For recurring events, map the time-of-day to today's date
+      // This handles cases where CalDAV returns original DTSTART for recurring events
+      const eventStart = new Date(todayDate);
+      eventStart.setUTCHours(originalStart.getUTCHours(), originalStart.getUTCMinutes(), 0, 0);
+      
+      const eventEnd = new Date(todayDate);
+      eventEnd.setUTCHours(originalEnd.getUTCHours(), originalEnd.getUTCMinutes(), 0, 0);
+      
+      // If end time is before start (shouldn't happen normally), add a day
+      if (eventEnd <= eventStart) {
+        eventEnd.setUTCDate(eventEnd.getUTCDate() + 1);
       }
+
+      const durationMinutes = Math.round((eventEnd.getTime() - eventStart.getTime()) / (1000 * 60));
+      todayMeetings.push({
+        summary: event.summary,
+        start: eventStart,
+        end: eventEnd,
+        durationMinutes,
+      });
+      console.log(`  Today meeting: ${event.summary} at ${eventStart.toISOString()} (${durationMinutes}min)`);
     }
 
+    console.log(`Found ${todayMeetings.length} meetings for today`);
     return todayMeetings.sort((a, b) => a.start.getTime() - b.start.getTime());
   }
 
-  getCurrentTime(): Date {
-    const now = new Date();
-    return new Date(now.getTime() + 3 * 60 * 60 * 1000);
+  // Get current time in UTC (server time is UTC)
+  getCurrentTimeUTC(): Date {
+    return new Date();
   }
 
   calculateFreeHours(todayMeetings: TodayMeeting[], today: Date): number {
-    const now = this.getCurrentTime();
+    const now = this.getCurrentTimeUTC();
     
-    // Work start is max(current time, 10:00) if today, otherwise 10:00
+    // Work hours in UTC: 07:00-15:00 UTC = 10:00-18:00 Moscow
     const workStart = new Date(today);
-    workStart.setHours(WORK_START_HOUR, 0, 0, 0);
-    
-    // If current time is after 10:00 and we're calculating for today, use current time
-    const isToday = now.toDateString() === today.toDateString();
-    const effectiveStart = new Date(today);
-    if (isToday && now > workStart) {
-      effectiveStart.setTime(now.getTime());
-    } else {
-      effectiveStart.setHours(WORK_START_HOUR, 0, 0, 0);
-    }
+    workStart.setUTCHours(WORK_START_HOUR_UTC, 0, 0, 0);
     
     const workEnd = new Date(today);
-    workEnd.setHours(WORK_END_HOUR, 0, 0, 0);
+    workEnd.setUTCHours(WORK_END_HOUR_UTC, 0, 0, 0);
+    
+    // Check if we're on the same day (in UTC)
+    const isToday = now.toDateString() === today.toDateString();
+    
+    // Effective start is max(current time, work start) if today
+    let effectiveStart: Date;
+    if (isToday && now > workStart) {
+      effectiveStart = new Date(now);
+    } else {
+      effectiveStart = new Date(workStart);
+    }
     
     // If we're already past work end, no free time
     if (effectiveStart >= workEnd) {
@@ -107,7 +127,7 @@ export class AgendaService {
     // Calculate available work hours from effective start to end
     const availableHours = (workEnd.getTime() - effectiveStart.getTime()) / (1000 * 60 * 60);
 
-    // Merge overlapping meetings to calculate total occupied time
+    // Merge overlapping meetings that fall within work hours
     const mergedMeetings: { start: number; end: number }[] = [];
     const relevantMeetings = todayMeetings
       .map(m => ({
@@ -117,12 +137,19 @@ export class AgendaService {
       .filter(m => m.start < m.end)
       .sort((a, b) => a.start - b.start);
 
+    console.log(`Today meetings (${todayMeetings.length} total), ${relevantMeetings.length} relevant for free hours calc`);
+    todayMeetings.forEach(m => {
+      const startUTC = m.start.toISOString();
+      const endUTC = m.end.toISOString();
+      console.log(`  - ${m.summary}: ${startUTC} to ${endUTC} (${m.durationMinutes}min)`);
+    });
+
     for (const meeting of relevantMeetings) {
       if (mergedMeetings.length === 0) {
         mergedMeetings.push(meeting);
       } else {
         const last = mergedMeetings[mergedMeetings.length - 1];
-        if (meeting.start < last.end) {
+        if (meeting.start <= last.end) {
           last.end = Math.max(last.end, meeting.end);
         } else {
           mergedMeetings.push(meeting);
@@ -134,26 +161,31 @@ export class AgendaService {
     const meetingHours = meetingMinutes / 60;
     const freeHours = availableHours - BREAK_HOURS - meetingHours;
 
+    console.log(`Free hours calc: effectiveStart=${effectiveStart.toISOString()}, workEnd=${workEnd.toISOString()}`);
+    console.log(`Free hours calc: available=${availableHours.toFixed(1)}, meetings=${meetingHours.toFixed(1)}h, break=${BREAK_HOURS}, free=${freeHours.toFixed(1)}`);
+
     return Math.max(0, Math.round(freeHours * 10) / 10);
   }
 
   hasLongFocusSlot(todayMeetings: TodayMeeting[], today: Date, minSlotHours: number = 2): boolean {
-    const now = this.getCurrentTime();
+    const now = this.getCurrentTimeUTC();
     
+    // Work hours in UTC: 07:00-15:00 UTC = 10:00-18:00 Moscow
     const workStart = new Date(today);
-    workStart.setHours(WORK_START_HOUR, 0, 0, 0);
-    
-    // Use current time if after 10:00 and calculating for today
-    const isToday = now.toDateString() === today.toDateString();
-    const effectiveStart = new Date(today);
-    if (isToday && now > workStart) {
-      effectiveStart.setTime(now.getTime());
-    } else {
-      effectiveStart.setHours(WORK_START_HOUR, 0, 0, 0);
-    }
+    workStart.setUTCHours(WORK_START_HOUR_UTC, 0, 0, 0);
     
     const workEnd = new Date(today);
-    workEnd.setHours(WORK_END_HOUR, 0, 0, 0);
+    workEnd.setUTCHours(WORK_END_HOUR_UTC, 0, 0, 0);
+    
+    // Check if we're on the same day (in UTC)
+    const isToday = now.toDateString() === today.toDateString();
+    
+    let effectiveStart: Date;
+    if (isToday && now > workStart) {
+      effectiveStart = new Date(now);
+    } else {
+      effectiveStart = new Date(workStart);
+    }
     
     if (effectiveStart >= workEnd) {
       return false;

@@ -148,6 +148,22 @@ export class CalDAVService {
     }
   }
 
+  async fetchTodayEvents(): Promise<CalendarEvent[]> {
+    const todayStart = new Date();
+    todayStart.setUTCHours(0, 0, 0, 0);
+    const todayEnd = new Date();
+    todayEnd.setUTCHours(23, 59, 59, 999);
+
+    try {
+      const events = await this.fetchEvents(todayStart, todayEnd);
+      console.log(`CalDAV fetched ${events.length} events for today (${todayStart.toISOString()} to ${todayEnd.toISOString()})`);
+      return events;
+    } catch (error) {
+      console.error("CalDAV error:", error);
+      throw new Error(`Ошибка при получении календаря: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  }
+
   private getEndOfWorkWeek(date: Date): Date {
     const d = new Date(date);
     const dayOfWeek = d.getDay();
