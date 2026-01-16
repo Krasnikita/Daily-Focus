@@ -36,6 +36,7 @@ Key backend services:
 - `CalDAVService`: Connects to CalDAV servers using tsdav library to fetch calendar events
 - `MiroService`: Fetches board items via Miro REST API to extract focus areas from mindmaps
 - `TelegramService`: Sends formatted messages via Telegram Bot API
+- `TelegramBotService`: Polls for Telegram updates, handles "Запустить" button to trigger agenda generation with 10-minute timeout
 
 ### Project Structure
 ```
