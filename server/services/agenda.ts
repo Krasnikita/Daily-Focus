@@ -20,6 +20,7 @@ export interface DayAnalysis {
   recommendedTasks: string[];
   hasInternalStatusUpcoming: boolean;
   hasProductReviewUpcoming: boolean;
+  hasSalesStatusUpcoming: boolean;
   weekContent: "подготовка питчей" | "цифры и развитие";
   bossPreparationData?: BossPreparationData;
 }
@@ -235,9 +236,10 @@ export class AgendaService {
     }
   }
 
-  findImportantMeetings(events: CalendarEvent[]): { hasInternalStatus: boolean; hasProductReview: boolean } {
+  findImportantMeetings(events: CalendarEvent[]): { hasInternalStatus: boolean; hasProductReview: boolean; hasSalesStatus: boolean } {
     let hasInternalStatus = false;
     let hasProductReview = false;
+    let hasSalesStatus = false;
 
     // Events should be filtered by CalDAV to only include today onwards
     // This ensures past meetings don't trigger preparation tasks
@@ -250,10 +252,13 @@ export class AgendaService {
       if (summaryLower.includes("product review weekly")) {
         hasProductReview = true;
       }
+      if (summaryLower.includes("заемщики: результаты, действия, run задачи")) {
+        hasSalesStatus = true;
+      }
     }
     
-    console.log(`Important meetings found (from today onwards): internal=${hasInternalStatus}, productReview=${hasProductReview}`);
-    return { hasInternalStatus, hasProductReview };
+    console.log(`Important meetings found (from today onwards): internal=${hasInternalStatus}, productReview=${hasProductReview}, sales=${hasSalesStatus}`);
+    return { hasInternalStatus, hasProductReview, hasSalesStatus };
   }
 
   generateRecommendedTasks(dayCategory: string, hasInternalStatus: boolean, hasProductReview: boolean): string[] {
@@ -300,7 +305,7 @@ export class AgendaService {
     // Use upcomingEvents (from today onwards) to check for important meetings
     // This ensures past meetings within the week don't trigger preparation tasks
     const eventsToCheck = upcomingEvents || events;
-    const { hasInternalStatus, hasProductReview } = this.findImportantMeetings(eventsToCheck);
+    const { hasInternalStatus, hasProductReview, hasSalesStatus } = this.findImportantMeetings(eventsToCheck);
     
     const recommendedTasks = this.generateRecommendedTasks(dayCategory, hasInternalStatus, hasProductReview);
     const weekContent = this.getWeekContent(today);
@@ -313,6 +318,7 @@ export class AgendaService {
       recommendedTasks,
       hasInternalStatusUpcoming: hasInternalStatus,
       hasProductReviewUpcoming: hasProductReview,
+      hasSalesStatusUpcoming: hasSalesStatus,
       weekContent,
       bossPreparationData,
     };
@@ -328,12 +334,23 @@ export class AgendaService {
       `Тип дня: ${analysis.dayCategory}`,
     ];
 
-    if (analysis.hasInternalStatusUpcoming || analysis.hasProductReviewUpcoming) {
+    const hasAnyTasks = analysis.hasInternalStatusUpcoming || analysis.hasProductReviewUpcoming || analysis.hasSalesStatusUpcoming;
+
+    if (hasAnyTasks) {
       lines.push("");
       lines.push("Предлагаемые задачи:");
       lines.push("");
       
       let taskCounter = 1;
+
+      if (analysis.hasSalesStatusUpcoming) {
+        lines.push(`${taskCounter++}. Подготовка к статусу по sales:`);
+        lines.push("");
+        lines.push("- Подготовить анализ продуктовых метрик по активности пользователей");
+        lines.push("- Освежить действия по основным сейлз-векторам");
+        lines.push("- Постепенно передавать Ане, меньше участвовать, или лидить, но не брать на себя кучу пойнтов");
+        lines.push("");
+      }
 
       if (analysis.hasInternalStatusUpcoming) {
         lines.push(`${taskCounter++}. Подготовка к статусу с шефом`);
@@ -365,10 +382,13 @@ export class AgendaService {
       }
     }
 
+    // Filter out "Профессиональное развитие" from focus areas
+    const filteredFocusAreas = focusAreas.filter(area => area !== "Профессиональное развитие");
+
     lines.push("");
     lines.push("Большие блоки:");
     lines.push("");
-    for (const area of focusAreas) {
+    for (const area of filteredFocusAreas) {
       lines.push(`- ${area}`);
     }
 
