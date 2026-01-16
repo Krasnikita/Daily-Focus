@@ -2,6 +2,8 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import { startTelegramBot } from "./services/telegramBot";
+import { reloadConfig } from "./services/config";
 
 const app = express();
 const httpServer = createServer(app);
@@ -93,6 +95,15 @@ app.use((req, res, next) => {
     },
     () => {
       log(`serving on port ${port}`);
+      
+      // Start Telegram bot polling
+      try {
+        const config = reloadConfig();
+        startTelegramBot(config.telegram);
+        log("Telegram bot started");
+      } catch (error) {
+        log(`Failed to start Telegram bot: ${error}`);
+      }
     },
   );
 })();
