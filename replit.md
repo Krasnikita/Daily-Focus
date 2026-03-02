@@ -84,3 +84,42 @@ Configuration is stored in `config.json` and validated at runtime using Zod sche
 - `@tanstack/react-query`: Async state management
 - `@radix-ui/*`: Accessible UI primitives
 - `tailwindcss`: Utility-first CSS framework
+
+## Cloud Deployment
+
+### Build for production
+```bash
+# Full build (frontend + server):
+npm run build
+
+# Server-only build (for bot/API-only deployment):
+npx tsx script/build.ts --server-only
+```
+
+The output is `dist/index.cjs` — a single bundled file that runs with plain Node.js.
+
+### Run on cloud server
+```bash
+NODE_ENV=production node dist/index.cjs
+```
+
+### Required files on cloud server
+- `dist/index.cjs` — the bundled server
+- `config.json` — CalDAV server URL, Miro board ID, widget ID
+- `node_modules/` — only runtime externals need to be installed (see package.json)
+
+### Required environment variables
+- `CALDAV_USERNAME` — Yandex Calendar username
+- `CALDAV_PASSWORD` — Yandex Calendar app password
+- `MIRO_ACCESS_TOKEN` — Miro API token
+- `TELEGRAM_BOT_TOKEN` — Telegram bot token
+- `TELEGRAM_CHAT_ID` — Telegram chat ID
+- `DATABASE_URL` — PostgreSQL connection string
+- `PORT` — server port (defaults to 5000)
+
+### Node.js version
+Requires Node.js 20.x
+
+### Notes
+- If no frontend build exists in `dist/public/`, the server runs in API/bot-only mode (no web UI)
+- The Telegram bot starts polling automatically on startup
