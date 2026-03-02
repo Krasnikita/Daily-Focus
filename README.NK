@@ -1,3 +1,13 @@
+Useful commands:
+
+# Check if it's running:
+ps aux | grep index.cjs
+# View logs in real-time:
+tail -f app.log
+# Stop the app:
+kill $(ps aux | grep 'node dist/index.cjs' | grep -v grep | awk '{print $2}')
+
+
 2. Клонирование через HTTPS (проще, но требует токен)
 Шаг 1: Создайте Personal Access Token на GitHub
 GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)
