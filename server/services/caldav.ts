@@ -138,10 +138,21 @@ export class CalDAVService {
   async fetchEventsFromTodayOnwards(): Promise<CalendarEvent[]> {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
-    const endOfWeek = this.getEndOfWorkWeek(now);
+    let endDate = this.getEndOfWorkWeek(now);
+    
+    // If today is Friday, extend the range to include Monday
+    // This is needed to detect "Заемщики:" meetings on Monday for prep tasks
+    const dayOfWeek = now.getDay();
+    if (dayOfWeek === 5) {
+      // Friday - extend to include Monday (3 days later, end of Monday)
+      const monday = new Date(now);
+      monday.setDate(monday.getDate() + 3);
+      monday.setHours(23, 59, 59, 999);
+      endDate = monday;
+    }
 
     try {
-      return await this.fetchEvents(now, endOfWeek);
+      return await this.fetchEvents(now, endDate);
     } catch (error) {
       console.error("CalDAV error:", error);
       throw new Error(`Ошибка при получении календаря: ${error instanceof Error ? error.message : "Unknown error"}`);

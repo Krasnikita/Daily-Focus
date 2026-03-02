@@ -21,22 +21,25 @@ export interface DayAnalysis {
   hasInternalStatusUpcoming: boolean;
   hasProductReviewUpcoming: boolean;
   hasSalesStatusUpcoming: boolean;
+  hasGroomingUpcoming: boolean;
   weekContent: "подготовка питчей" | "цифры и развитие";
   bossPreparationData?: BossPreparationData;
 }
 
-// Moscow time work hours: 10:00 - 18:00 MSK = 07:00 - 15:00 UTC
-const WORK_START_HOUR_UTC = 7;
-const WORK_END_HOUR_UTC = 15;
-const MOSCOW_OFFSET_HOURS = 3;
+// CalDAV returns times in Moscow timezone but with UTC suffix (Z)
+// So we compare against Moscow work hours directly: 10:00 - 18:00
+const WORK_START_HOUR = 10;
+const WORK_END_HOUR = 18;
 const WORK_HOURS = 8; // 10:00-18:00 = 8 hours
 const BREAK_HOURS = 0.5;
 
 export class AgendaService {
   
   getWeekContent(date: Date): "подготовка питчей" | "цифры и развитие" {
-    const startOfYear = new Date(date.getFullYear(), 0, 1);
-    const dayOfYear = Math.floor((date.getTime() - startOfYear.getTime()) / (1000 * 60 * 60 * 24));
+    // Normalize date to Moscow fake UTC for consistent week calculation
+    const moscowDate = this.toMoscowDayStart(date);
+    const startOfYear = new Date(Date.UTC(moscowDate.getUTCFullYear(), 0, 1));
+    const dayOfYear = Math.floor((moscowDate.getTime() - startOfYear.getTime()) / (1000 * 60 * 60 * 24));
     const weekNumber = Math.ceil((dayOfYear + 1) / 7);
     return weekNumber % 2 === 1 ? "подготовка питчей" : "цифры и развитие";
   }
@@ -48,9 +51,8 @@ export class AgendaService {
 
     const todayMeetings: TodayMeeting[] = [];
     
-    // Get today's date in UTC
-    const todayDate = new Date(today);
-    todayDate.setUTCHours(0, 0, 0, 0);
+    // Convert today to Moscow day start for consistent matching with CalDAV meeting times
+    const todayDate = this.toMoscowDayStart(today);
 
     for (const event of events) {
       const originalStart = new Date(event.start);
@@ -94,23 +96,68 @@ export class AgendaService {
     return todayMeetings.sort((a, b) => a.start.getTime() - b.start.getTime());
   }
 
-  // Get current time in UTC (server time is UTC)
-  getCurrentTimeUTC(): Date {
-    return new Date();
+  // Convert any UTC date to "fake UTC" (Moscow time with Z suffix) to match CalDAV format
+  // CalDAV returns Moscow times labeled as UTC, so we need to compare apples to apples
+  private toMoscowFakeUTC(date: Date): Date {
+    const moscow = new Date(date);
+    moscow.setUTCHours(moscow.getUTCHours() + 3);
+    return moscow;
+  }
+
+  // Get current time as "fake UTC" (Moscow time)
+  getCurrentTimeAsMoscowFakeUTC(): Date {
+    return this.toMoscowFakeUTC(new Date());
+  }
+
+  // Get today's date at midnight in "fake UTC" (Moscow time)
+  getTodayMoscowFakeUTC(): Date {
+    const now = this.getCurrentTimeAsMoscowFakeUTC();
+    now.setUTCHours(0, 0, 0, 0);
+    return now;
+  }
+
+  // Convert any date to Moscow day start (midnight in Moscow fake UTC)
+  // Use this for all day-level comparisons to ensure consistency
+  toMoscowDayStart(date: Date): Date {
+    const moscow = this.toMoscowFakeUTC(date);
+    moscow.setUTCHours(0, 0, 0, 0);
+    return moscow;
+  }
+
+  // Get the previous work day (Friday -> Thursday, Monday -> Friday, etc.)
+  private getPreviousWorkDay(date: Date): Date {
+    const prev = new Date(date);
+    const dayOfWeek = prev.getUTCDay();
+    
+    if (dayOfWeek === 1) {
+      // Monday -> previous work day is Friday (3 days back)
+      prev.setUTCDate(prev.getUTCDate() - 3);
+    } else if (dayOfWeek === 0) {
+      // Sunday -> previous work day is Friday (2 days back)
+      prev.setUTCDate(prev.getUTCDate() - 2);
+    } else {
+      // Other days -> just go back 1 day
+      prev.setUTCDate(prev.getUTCDate() - 1);
+    }
+    
+    return prev;
   }
 
   calculateFreeHours(todayMeetings: TodayMeeting[], today: Date): number {
-    const now = this.getCurrentTimeUTC();
+    const now = this.getCurrentTimeAsMoscowFakeUTC();
+    // Convert today to Moscow day start for consistent comparison
+    const todayMoscowDayStart = this.toMoscowDayStart(today);
     
-    // Work hours in UTC: 07:00-15:00 UTC = 10:00-18:00 Moscow
-    const workStart = new Date(today);
-    workStart.setUTCHours(WORK_START_HOUR_UTC, 0, 0, 0);
+    // CalDAV returns Moscow times with UTC suffix, so compare against Moscow work hours directly
+    const workStart = new Date(todayMoscowDayStart);
+    workStart.setUTCHours(WORK_START_HOUR, 0, 0, 0);
     
-    const workEnd = new Date(today);
-    workEnd.setUTCHours(WORK_END_HOUR_UTC, 0, 0, 0);
+    const workEnd = new Date(todayMoscowDayStart);
+    workEnd.setUTCHours(WORK_END_HOUR, 0, 0, 0);
     
-    // Check if we're on the same day (in UTC)
-    const isToday = now.toDateString() === today.toDateString();
+    // Check if we're on the same day using the unified helper
+    const nowDayStart = this.getTodayMoscowFakeUTC();
+    const isToday = this.isSameDay(nowDayStart, todayMoscowDayStart);
     
     // Effective start is max(current time, work start) if today
     let effectiveStart: Date;
@@ -169,17 +216,20 @@ export class AgendaService {
   }
 
   hasLongFocusSlot(todayMeetings: TodayMeeting[], today: Date, minSlotHours: number = 2): boolean {
-    const now = this.getCurrentTimeUTC();
+    const now = this.getCurrentTimeAsMoscowFakeUTC();
+    // Convert today to Moscow day start for consistent comparison
+    const todayMoscowDayStart = this.toMoscowDayStart(today);
     
-    // Work hours in UTC: 07:00-15:00 UTC = 10:00-18:00 Moscow
-    const workStart = new Date(today);
-    workStart.setUTCHours(WORK_START_HOUR_UTC, 0, 0, 0);
+    // CalDAV returns Moscow times with UTC suffix, so compare against Moscow work hours directly
+    const workStart = new Date(todayMoscowDayStart);
+    workStart.setUTCHours(WORK_START_HOUR, 0, 0, 0);
     
-    const workEnd = new Date(today);
-    workEnd.setUTCHours(WORK_END_HOUR_UTC, 0, 0, 0);
+    const workEnd = new Date(todayMoscowDayStart);
+    workEnd.setUTCHours(WORK_END_HOUR, 0, 0, 0);
     
-    // Check if we're on the same day (in UTC)
-    const isToday = now.toDateString() === today.toDateString();
+    // Check if we're on the same day using the unified helper
+    const nowDayStart = this.getTodayMoscowFakeUTC();
+    const isToday = this.isSameDay(nowDayStart, todayMoscowDayStart);
     
     let effectiveStart: Date;
     if (isToday && now > workStart) {
@@ -236,13 +286,43 @@ export class AgendaService {
     }
   }
 
-  findImportantMeetings(events: CalendarEvent[]): { hasInternalStatus: boolean; hasProductReview: boolean; hasSalesStatus: boolean } {
+  private getNextWorkDay(date: Date): Date {
+    const next = new Date(date);
+    const dayOfWeek = next.getUTCDay();
+    
+    if (dayOfWeek === 5) {
+      // Friday -> next work day is Monday (3 days forward)
+      next.setUTCDate(next.getUTCDate() + 3);
+    } else if (dayOfWeek === 6) {
+      // Saturday -> next work day is Monday (2 days forward)
+      next.setUTCDate(next.getUTCDate() + 2);
+    } else {
+      // Other days -> just go forward 1 day
+      next.setUTCDate(next.getUTCDate() + 1);
+    }
+    
+    return next;
+  }
+
+  // Compare two dates using UTC components (for fake UTC / Moscow time comparisons)
+  private isSameDay(date1: Date, date2: Date): boolean {
+    return date1.getUTCFullYear() === date2.getUTCFullYear() &&
+           date1.getUTCMonth() === date2.getUTCMonth() &&
+           date1.getUTCDate() === date2.getUTCDate();
+  }
+
+  findImportantMeetings(events: CalendarEvent[], today: Date, todayMeetings?: TodayMeeting[]): { hasInternalStatus: boolean; hasProductReview: boolean; hasSalesStatus: boolean; hasGrooming: boolean } {
     let hasInternalStatus = false;
     let hasProductReview = false;
     let hasSalesStatus = false;
+    let hasGrooming = false;
 
-    // Events should be filtered by CalDAV to only include today onwards
-    // This ensures past meetings don't trigger preparation tasks
+    // Normalize today and tomorrow to Moscow day start for consistent comparison
+    const todayNormalized = this.toMoscowDayStart(today);
+    const tomorrowNormalized = new Date(todayNormalized);
+    tomorrowNormalized.setUTCDate(tomorrowNormalized.getUTCDate() + 1);
+
+    // Check for meetings in the upcoming events list
     for (const event of events) {
       const summaryLower = event.summary.toLowerCase();
       
@@ -252,13 +332,73 @@ export class AgendaService {
       if (summaryLower.includes("product review weekly")) {
         hasProductReview = true;
       }
-      if (summaryLower.includes("заемщики: результаты, действия, run задачи")) {
-        hasSalesStatus = true;
+      
+      // Check for ORD1 grooming meeting - today or tomorrow
+      // Note: Event dates from CalDAV are already in Moscow "fake UTC", so we just normalize to day start
+      if (summaryLower.includes("ord1") && summaryLower.includes("груминг")) {
+        const eventDate = new Date(event.start);
+        eventDate.setUTCHours(0, 0, 0, 0);  // Already in Moscow timezone, just set to midnight
+        if (this.isSameDay(eventDate, todayNormalized) || this.isSameDay(eventDate, tomorrowNormalized)) {
+          hasGrooming = true;
+        }
+      }
+    }
+
+    // Also check todayMeetings for grooming and sales meetings (handles recurring events with date-mapped times)
+    if (todayMeetings) {
+      for (const meeting of todayMeetings) {
+        const summaryLower = meeting.summary.toLowerCase();
+        if (summaryLower.includes("ord1") && summaryLower.includes("груминг")) {
+          hasGrooming = true;
+        }
+        if (summaryLower.includes("заемщики:")) {
+          hasSalesStatus = true;
+        }
+      }
+    }
+
+    // Check for "Заемщики:" meeting - show prep if:
+    // 1. Meeting is today (checked above via todayMeetings), OR
+    // 2. Today is 1 work day before the meeting (e.g., Friday for Monday meeting)
+    // Re-use todayNormalized from above for consistency
+    
+    // Check events list for "Заемщики:" meeting
+    for (const event of events) {
+      const summaryLower = event.summary.toLowerCase();
+      if (summaryLower.includes("заемщики:")) {
+        // Event dates from CalDAV are already in Moscow "fake UTC", normalize to day start
+        const eventDate = new Date(event.start);
+        eventDate.setUTCHours(0, 0, 0, 0);
+        
+        // Show prep if meeting is today
+        if (this.isSameDay(eventDate, todayNormalized)) {
+          hasSalesStatus = true;
+        } else {
+          // Check if today is 1 work day before the meeting
+          const previousWorkDay = this.getPreviousWorkDay(eventDate);
+          previousWorkDay.setUTCHours(0, 0, 0, 0);
+          if (this.isSameDay(todayNormalized, previousWorkDay)) {
+            hasSalesStatus = true;
+          }
+        }
       }
     }
     
-    console.log(`Important meetings found (from today onwards): internal=${hasInternalStatus}, productReview=${hasProductReview}, sales=${hasSalesStatus}`);
-    return { hasInternalStatus, hasProductReview, hasSalesStatus };
+    // Fallback for recurring meetings: if today is Friday, also check if meeting exists
+    // (handles recurring meetings that might not show specific dates in events list)
+    const dayOfWeek = todayNormalized.getUTCDay();
+    if (dayOfWeek === 5 && !hasSalesStatus) {
+      for (const event of events) {
+        const summaryLower = event.summary.toLowerCase();
+        if (summaryLower.includes("заемщики:")) {
+          hasSalesStatus = true;
+          break;
+        }
+      }
+    }
+    
+    console.log(`Important meetings: internal=${hasInternalStatus}, productReview=${hasProductReview}, sales=${hasSalesStatus}, grooming=${hasGrooming}`);
+    return { hasInternalStatus, hasProductReview, hasSalesStatus, hasGrooming };
   }
 
   generateRecommendedTasks(dayCategory: string, hasInternalStatus: boolean, hasProductReview: boolean): string[] {
@@ -280,7 +420,7 @@ export class AgendaService {
 
   private getEndOfWorkWeek(date: Date): Date {
     const d = new Date(date);
-    const dayOfWeek = d.getDay();
+    const dayOfWeek = d.getUTCDay();
     let daysUntilFriday: number;
     
     if (dayOfWeek === 0) {
@@ -291,8 +431,8 @@ export class AgendaService {
       daysUntilFriday = 5 - dayOfWeek;
     }
     
-    d.setDate(d.getDate() + daysUntilFriday);
-    d.setHours(23, 59, 59, 999);
+    d.setUTCDate(d.getUTCDate() + daysUntilFriday);
+    d.setUTCHours(23, 59, 59, 999);
     return d;
   }
 
@@ -305,7 +445,7 @@ export class AgendaService {
     // Use upcomingEvents (from today onwards) to check for important meetings
     // This ensures past meetings within the week don't trigger preparation tasks
     const eventsToCheck = upcomingEvents || events;
-    const { hasInternalStatus, hasProductReview, hasSalesStatus } = this.findImportantMeetings(eventsToCheck);
+    const { hasInternalStatus, hasProductReview, hasSalesStatus, hasGrooming } = this.findImportantMeetings(eventsToCheck, today, todayMeetings);
     
     const recommendedTasks = this.generateRecommendedTasks(dayCategory, hasInternalStatus, hasProductReview);
     const weekContent = this.getWeekContent(today);
@@ -319,12 +459,13 @@ export class AgendaService {
       hasInternalStatusUpcoming: hasInternalStatus,
       hasProductReviewUpcoming: hasProductReview,
       hasSalesStatusUpcoming: hasSalesStatus,
+      hasGroomingUpcoming: hasGrooming,
       weekContent,
       bossPreparationData,
     };
   }
 
-  formatAgendaMessage(analysis: DayAnalysis, focusAreas: string[]): string {
+  formatAgendaMessage(analysis: DayAnalysis, focusAreas: string[], statusItems?: Array<{ category: string; items: Array<{ name: string; subItems: string[] }> }>, disadvantages?: string[]): string {
     const lines: string[] = [
       "Доброе утро!",
       "Рекомендуемый план дня на сегодня такой, мой друг.",
@@ -334,21 +475,17 @@ export class AgendaService {
       `Тип дня: ${analysis.dayCategory}`,
     ];
 
-    const hasAnyTasks = analysis.hasInternalStatusUpcoming || analysis.hasProductReviewUpcoming || analysis.hasSalesStatusUpcoming;
+    const hasAnyTasks = analysis.hasInternalStatusUpcoming || analysis.hasProductReviewUpcoming || analysis.hasSalesStatusUpcoming || analysis.hasGroomingUpcoming;
 
     if (hasAnyTasks) {
       lines.push("");
-      lines.push("Предлагаемые задачи:");
+      lines.push("ПРЕДЛАГАЕМЫЕ ЗАДАЧИ:");
       lines.push("");
       
       let taskCounter = 1;
 
       if (analysis.hasSalesStatusUpcoming) {
-        lines.push(`${taskCounter++}. Подготовка к статусу по sales:`);
-        lines.push("");
-        lines.push("- Подготовить анализ продуктовых метрик по активности пользователей");
-        lines.push("- Освежить действия по основным сейлз-векторам");
-        lines.push("- Постепенно передавать Ане, меньше участвовать, или лидить, но не брать на себя кучу пойнтов");
+        lines.push(`${taskCounter++}. Подготовка к статусу по sales operations`);
         lines.push("");
       }
 
@@ -379,6 +516,16 @@ export class AgendaService {
       
       if (analysis.hasProductReviewUpcoming) {
         lines.push(`${taskCounter++}. Подготовка к статусу по продукту`);
+        lines.push("");
+      }
+
+      if (analysis.hasGroomingUpcoming) {
+        lines.push(`${taskCounter++}. Подготовить задачи или проекты к грумингу`);
+        lines.push("");
+        lines.push("— Проверить фокусные проекты");
+        lines.push("— Проверить фильтр с run-задачами");
+        lines.push("— Проверить, нужно ли предварительно грумить идеи проектов");
+        lines.push("");
       }
     }
 
@@ -386,10 +533,36 @@ export class AgendaService {
     const filteredFocusAreas = focusAreas.filter(area => area !== "Профессиональное развитие");
 
     lines.push("");
-    lines.push("Большие блоки:");
+    lines.push("БОЛЬШИЕ БЛОКИ:");
     lines.push("");
     for (const area of filteredFocusAreas) {
       lines.push(`- ${area}`);
+    }
+
+    // Add status items section if available
+    if (statusItems && statusItems.length > 0) {
+      lines.push("");
+      lines.push("ПУНКТЫ СО СТАТУСА:");
+      lines.push("");
+      for (const category of statusItems) {
+        lines.push(category.category);
+        for (const item of category.items) {
+          lines.push(`- ${item.name}`);
+          item.subItems.forEach((subItem, index) => {
+            lines.push(`${index + 1}. ${subItem}`);
+          });
+        }
+        lines.push("");
+      }
+    }
+
+    if (disadvantages && disadvantages.length > 0) {
+      lines.push("");
+      lines.push("УБИРАТЬ НЕДОСТАТКИ:");
+      lines.push("");
+      for (const item of disadvantages) {
+        lines.push(`- ${item}`);
+      }
     }
 
     return lines.join("\n");

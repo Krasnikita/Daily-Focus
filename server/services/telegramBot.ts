@@ -167,10 +167,14 @@ export class TelegramBotService {
 
     let focusAreas: string[] = [];
     let bossPreparationData: { conceptualThoughts: string[]; meetingSelection: string[] } | undefined;
+    let statusItems: Array<{ category: string; items: Array<{ name: string; subItems: string[] }> }> = [];
+    let disadvantages: string[] = [];
     try {
       const miroService = new MiroService(config.miro);
       focusAreas = await miroService.getFirstLevelAreas();
       bossPreparationData = await miroService.getBossPreparationItems();
+      statusItems = await miroService.getStatusItems();
+      disadvantages = await miroService.getDisadvantages();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown Miro error";
       errors.push(`Miro: ${message}`);
@@ -179,7 +183,7 @@ export class TelegramBotService {
     if (signal.aborted) throw new Error("AbortError");
 
     const analysis = agendaService.analyzeDay(todayEvents, today, bossPreparationData, upcomingEvents);
-    const fullMessage = agendaService.formatAgendaMessage(analysis, focusAreas);
+    const fullMessage = agendaService.formatAgendaMessage(analysis, focusAreas, statusItems, disadvantages);
 
     if (errors.length > 0) {
       return {

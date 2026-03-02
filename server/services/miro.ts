@@ -255,4 +255,78 @@ export class MiroService {
       return { conceptualThoughts: [], meetingSelection: [] };
     }
   }
+
+  async getDisadvantages(): Promise<string[]> {
+    const DISADVANTAGES_WIDGET_ID = "3458764652835612107";
+    try {
+      const nodes = await this.fetchAllMindmapNodes();
+      
+      let targetNode = nodes.find(n => n.id === DISADVANTAGES_WIDGET_ID);
+      if (!targetNode) {
+        console.log(`Disadvantages node ${DISADVANTAGES_WIDGET_ID} not found by ID, searching by content...`);
+        targetNode = nodes.find(n => 
+          n.content.toLowerCase().includes("недостатки")
+        );
+        if (!targetNode) {
+          console.log("Disadvantages node not found on the board");
+          return [];
+        }
+      }
+
+      const firstLevelChildren = nodes.filter(n => n.parentId === targetNode!.id);
+      const items = firstLevelChildren
+        .map(n => n.content)
+        .filter(Boolean);
+
+      console.log(`Disadvantages: found ${items.length} items`);
+      return items;
+    } catch (error) {
+      console.error("Error fetching disadvantages:", error);
+      return [];
+    }
+  }
+
+  async getStatusItems(): Promise<Array<{ category: string; items: Array<{ name: string; subItems: string[] }> }>> {
+    try {
+      const nodes = await this.fetchAllMindmapNodes();
+      
+      const statusCategories: Array<{ category: string; items: Array<{ name: string; subItems: string[] }> }> = [];
+      
+      for (const node of nodes) {
+        if (node.content.startsWith("555")) {
+          const categoryName = node.content.replace(/^555\s*/, "").trim();
+          
+          const children = nodes.filter(n => n.parentId === node.id);
+          const items: Array<{ name: string; subItems: string[] }> = [];
+          
+          for (const child of children) {
+            if (child.content) {
+              const grandchildren = nodes.filter(n => n.parentId === child.id);
+              const subItems = grandchildren
+                .map(gc => gc.content)
+                .filter(Boolean);
+              
+              items.push({
+                name: child.content,
+                subItems,
+              });
+            }
+          }
+          
+          if (categoryName && items.length > 0) {
+            statusCategories.push({
+              category: categoryName,
+              items,
+            });
+          }
+        }
+      }
+
+      console.log(`Status items: found ${statusCategories.length} categories with 555 prefix`);
+      return statusCategories;
+    } catch (error) {
+      console.error("Error fetching status items:", error);
+      return [];
+    }
+  }
 }
