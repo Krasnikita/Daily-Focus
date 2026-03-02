@@ -1,0 +1,16 @@
+2. Клонирование через HTTPS (проще, но требует токен)
+Шаг 1: Создайте Personal Access Token на GitHub
+GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)
+
+Generate new token → выберите repo scope
+
+Скопируйте токен
+
+Шаг 2: Клонируйте репозиторий
+bash
+# Клонируйте с HTTPS URL
+git clone https://github.com/username/repository-name.git
+
+# Когда спросит логин/пароль:
+# Username: ваш GitHub username
+# Password: вставьте Personal Access Token (не пароль от GitHub!)
