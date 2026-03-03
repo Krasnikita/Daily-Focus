@@ -1,3 +1,11 @@
+Запуск 
+
+cd /home/a1173774/Daily-Focus
+PORT=3003 nohup node dist/index.cjs > app.log 2>&1 &
+tail -f app.log
+
+Может упасть из-за отсутствия токенов 
+
 Useful commands:
 
 # Check if it's running:
@@ -5,7 +13,7 @@ ps aux | grep index.cjs
 # View logs in real-time:
 tail -f app.log
 # Stop the app:
-kill $(ps aux | grep 'node dist/index.cjs' | grep -v grep | awk '{print $2}')
+  kill $(ps aux | grep 'node dist/index.cjs' | grep -v grep | awk '{print $2}')
 
 
 2. Клонирование через HTTPS (проще, но требует токен)
@@ -24,3 +32,5 @@ git clone https://github.com/username/repository-name.git
 # Когда спросит логин/пароль:
 # Username: ваш GitHub username
 # Password: вставьте Personal Access Token (не пароль от GitHub!)
+
+
