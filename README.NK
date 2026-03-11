@@ -1,10 +1,10 @@
 Запуск 
 
 cd /home/a1173774/Daily-Focus
+source .env
 PORT=3003 nohup node dist/index.cjs > app.log 2>&1 &
 tail -f app.log
 
-Может упасть из-за отсутствия токенов 
 
 Useful commands:
 
